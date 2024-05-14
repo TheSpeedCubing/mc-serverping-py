@@ -6,7 +6,6 @@ import traceback
 
 import dns.resolver
 
-
 def read_varint(sock):
     result = 0
     for i in range(5):
@@ -108,6 +107,7 @@ try:
         pass
 except:
     pass
+
 print("----------------------------------")
 print("Final DNS Result: " + srv_hostname + ":" + str(srv_port))
 print("----------------------------------")
@@ -120,43 +120,30 @@ try:
     ping = int((time.time() - start) * 1000)
     print("Connected.")
     print()
-    data = bytearray()
-    write_varint(data, 0)
-    write_varint(data, protocol)
-    write_varint(data, len(hostname))
-    data.extend(hostname.encode('utf-8'))
-    data.extend(struct.pack('>h', port))
-    write_varint(data, 1)
+
+    # handshake
+    hs = bytearray()
+    write_varint(hs, 0)
+    write_varint(hs, protocol)
+    write_varint(hs, len(hostname))
+    hs.extend(hostname.encode('utf-8'))
+    hs.extend(struct.pack('>h', port))
+    write_varint(hs, 1)
 
     handshake = bytearray()
-    write_varint(handshake, len(data))
-    handshake.extend(data)
+    write_varint(handshake, len(hs))
+    handshake.extend(hs)
+
+    # status req
     write_varint(handshake, 1)
     write_varint(handshake, 0)
-    print("Status Request Packet:")
-    for byte in handshake:
-        print(byte, end='')
-        print(' ', end='')
-    print()
 
     socket_conn.sendall(handshake)
 
-    # Read packet ID
-    read_varint(socket_conn)
+    # status res
+    packet_len = read_varint(socket_conn)
     packet_id = read_varint(socket_conn)
-    print("Status Response Packet ID : " + str(packet_id))
-    if packet_id == -1:
-        print("stream ended")
-    elif packet_id != 0x00:
-        print("invalid packet")
-
-    # Read length
     length = read_varint(socket_conn)
-    print("Length: " + str(length))
-    if length == -1:
-        print("stream ended")
-    elif length == 0:
-        print("returned unexcepted value")
 
     data = b''
     while len(data) < length:
@@ -165,19 +152,18 @@ try:
             break
         data += r
 
+    # ping req
+    ping_request = bytearray()
+    write_varint(ping_request,9)
+    write_varint(ping_request,1)
+    ping_request.extend(struct.pack('<Q', int(time.time() * 1000)))
+    socket_conn.sendall(ping_request)
+
+    # ping res
+    packet_len = read_varint(socket_conn)
+    packet_id = read_varint(socket_conn)
+
     socket_conn.close()
-    print("Skipping Ping Request Packet.")
-    # socket_conn.send(b'\x09')
-    # socket_conn.send(b'\x01')
-    # socket_conn.sendall(struct.pack('<Q', int(time.time() * 1000)))
-    #
-    # read_varint(socket_conn)
-    # packet_id = read_varint(socket_conn)
-    # print(packet_id)
-    # if packet_id == -1:
-    #     print("stream ended")
-    # elif packet_id != 0x01:
-    #     print("invalid packet")
 
     print("----------------------------------")
     print("Result:")
